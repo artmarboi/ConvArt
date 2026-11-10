@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Production build outputs
+dist/
+release/
+
+# Large compiled binaries (exceeds GitHub 100MB limit; upload to GitHub Releases instead)
+bin/*.exe
+bin/*.zip
+
+# Temp and logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Environment and OS
+.env
+.env.local
+.DS_Store
+Thumbs.db
+
+# Vite / Electron cache
+.vite/
+.cache/
