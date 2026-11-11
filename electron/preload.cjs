@@ -13,15 +13,18 @@ contextBridge.exposeInMainWorld('api', {
   },
   toMediaUrl: (filePath) => {
     if (!filePath) return '';
-    const normalized = filePath.replace(/\\/g, '/');
-    return 'media-loader://' + encodeURI(normalized);
+    return 'media-loader://local/?path=' + encodeURIComponent(filePath);
   },
   getSystemStatus: () => ipcRenderer.invoke('get-system-status'),
   selectFiles: (type) => ipcRenderer.invoke('select-files', type),
   selectFolder: () => ipcRenderer.invoke('select-folder'),
+  readImageAsDataUrl: (filePath) => ipcRenderer.invoke('read-image-data-url', filePath),
   probeFile: (filePath) => ipcRenderer.invoke('probe-file', filePath),
   startConversion: (payload) => ipcRenderer.invoke('start-conversion', payload),
   cancelConversion: (jobId) => ipcRenderer.invoke('cancel-conversion', jobId),
+  losslessCut: (payload) => ipcRenderer.invoke('lossless-cut', payload),
+  extractFrame: (payload) => ipcRenderer.invoke('extract-frame', payload),
+  generateFastPreview: (filePath) => ipcRenderer.invoke('generate-fast-preview', filePath),
   revealFile: (filePath) => ipcRenderer.invoke('reveal-file', filePath),
   onProgress: (callback) => {
     const handler = (_event, data) => callback(data);
@@ -47,6 +50,7 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('updater-status', handler);
   },
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  setWindowTheme: (theme) => ipcRenderer.send('set-window-theme', theme),
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),

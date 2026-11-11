@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import TitleBar from './components/TitleBar';
+import Sidebar from './components/Sidebar';
 import DropZone from './components/DropZone';
 import QueueItem from './components/QueueItem';
 import InspectorModal from './components/InspectorModal';
 import MediaPreviewModal from './components/MediaPreviewModal';
+import TrimmerModal from './components/TrimmerModal';
 import SettingsModal from './components/SettingsModal';
 import WebDownloader from './components/WebDownloader';
 import BatchBar from './components/BatchBar';
@@ -11,6 +13,11 @@ import { Trash, Wand2 } from 'lucide-react';
 
 export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('convart_theme') || 'red');
+  const [themeMode, setThemeMode] = useState(() => localStorage.getItem('convart_theme_mode') || 'dark');
+  const [bgImage, setBgImage] = useState(() => localStorage.getItem('convart_bg_image') || '');
+  const [bgDarkness, setBgDarkness] = useState(() => parseInt(localStorage.getItem('convart_bg_darkness') || '50', 10));
+  const [bgBlur, setBgBlur] = useState(() => parseInt(localStorage.getItem('convart_bg_blur') || '0', 10));
+
   const [activeTab, setActiveTab] = useState('converter'); // 'converter' | 'downloader'
   const [systemStatus, setSystemStatus] = useState(null);
   const [outputDir, setOutputDir] = useState('');
@@ -38,14 +45,36 @@ export default function App() {
   const [queue, setQueue] = useState([]);
   const [inspectingItem, setInspectingItem] = useState(null);
   const [previewItem, setPreviewItem] = useState(null);
+  const [trimmingItem, setTrimmingItem] = useState(null);
   const [isProcessingBatch, setIsProcessingBatch] = useState(false);
   const [globalPreset, setGlobalPreset] = useState('balanced');
 
-  // Apply theme to HTML
+  const handleSaveTrim = ({ id, trimStart, trimEnd }) => {
+    setQueue((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        return {
+          ...item,
+          settings: {
+            ...item.settings,
+            trimStart,
+            trimEnd,
+          },
+        };
+      })
+    );
+  };
+
+  // Apply theme and mode to HTML
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-theme-mode', themeMode);
     localStorage.setItem('convart_theme', theme);
-  }, [theme]);
+    localStorage.setItem('convart_theme_mode', themeMode);
+    if (window.api && window.api.setWindowTheme) {
+      window.api.setWindowTheme(themeMode);
+    }
+  }, [theme, themeMode]);
 
   // Persist settings
   const handleSaveSettings = (newSettings) => {
@@ -332,124 +361,190 @@ export default function App() {
   const isQueueEmpty = queue.length === 0;
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#07090e] text-slate-100 overflow-hidden select-none selection:bg-[var(--accent)] selection:text-slate-950">
-      <TitleBar
-        systemStatus={systemStatus}
-        currentTheme={theme}
-        setTheme={setTheme}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-      />
-
-      {/* Main scrollable body with visible styled scrollbar */}
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-4 overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col">
-        {/* Tab 1: Local Converter & Compressor */}
-        <div className={`flex-1 flex flex-col ${activeTab === 'converter' ? 'flex' : 'hidden'} ${
-          isQueueEmpty ? 'min-h-[calc(100vh-6rem)] items-center justify-center' : 'gap-5'
-        }`}>
-          <DropZone onFilesSelected={handleFilesSelected} queueCount={queue.length} />
-
-          {queue.length > 0 && (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm tracking-wide text-white uppercase flex items-center gap-2">
-                  <span>Список файлов ({queue.length})</span>
-                </h3>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                  <Wand2 className="w-3.5 h-3.5 text-accent" /> Применить ко всем:
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleApplyGlobalPreset('balanced')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
-                    globalPreset === 'balanced'
-                      ? 'bg-accent-subtle text-accent border border-accent glow-accent'
-                      : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
-                  }`}
-                >
-                  Оптимально
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleApplyGlobalPreset('ultra-compress')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
-                    globalPreset === 'ultra-compress'
-                      ? 'bg-accent-subtle text-accent border border-accent glow-accent'
-                      : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
-                  }`}
-                >
-                  Макс. сжатие
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleApplyGlobalPreset('discord-8mb')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
-                    globalPreset === 'discord-8mb'
-                      ? 'bg-accent-subtle text-accent border border-accent glow-accent'
-                      : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
-                  }`}
-                >
-                  Discord 8МБ
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleApplyGlobalPreset('high-quality')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
-                    globalPreset === 'high-quality'
-                      ? 'bg-accent-subtle text-accent border border-accent glow-accent'
-                      : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
-                  }`}
-                >
-                  HQ Качество
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleClearAll}
-                  className="p-1.5 ml-2 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
-                  title="Очистить весь список"
-                >
-                  <Trash className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {queue.length > 0 && (
-            <div className="flex-1 flex flex-col gap-3 pb-32">
-              {queue.map((item) => (
-                <QueueItem
-                  key={item.id}
-                  item={item}
-                  onUpdateFormat={handleUpdateFormat}
-                  onUpdatePreset={handleUpdatePreset}
-                  onOpenInspector={setInspectingItem}
-                  onStartSingle={startConversion}
-                  onCancel={handleCancel}
-                  onRemove={handleRemove}
-                  onReveal={handleReveal}
-                  onPreview={setPreviewItem}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Tab 2: Web Media Downloader (Kept mounted via CSS display) */}
-        <div className={`flex-1 flex flex-col ${activeTab === 'downloader' ? 'flex' : 'hidden'}`}>
-          <WebDownloader
-            outputDir={settings.separateByType && settings.audioDir ? settings.audioDir : (settings.defaultDir || outputDir)}
-            onSendToQueue={(downloadedPath) => {
-              handleFilesSelected([downloadedPath]);
-              setActiveTab('converter');
+    <div className={`relative h-screen w-screen flex flex-col transition-colors duration-200 overflow-hidden select-none selection:bg-[var(--accent)] selection:text-slate-950 ${
+      themeMode === 'light' ? 'bg-[#f1f4f9] text-slate-900' : 'bg-[#07090e] text-slate-100'
+    }`}>
+      {/* Dynamic Background Image layer (Auto-adapted without stretching) */}
+      {bgImage && (
+        <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+          <div
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-all duration-300"
+            style={{
+              backgroundImage: `url("${bgImage}")`,
+              filter: bgBlur > 0 ? `blur(${bgBlur}px)` : 'none',
+              transform: bgBlur > 0 ? 'scale(1.05)' : 'none',
+            }}
+          />
+          <div
+            className="absolute inset-0 transition-colors duration-300"
+            style={{
+              backgroundColor: `rgba(0, 0, 0, ${bgDarkness / 100})`,
             }}
           />
         </div>
-      </main>
+      )}
+
+      {/* Main App Layout: Left Sidebar + Right Content Area */}
+      <div className="relative z-10 flex h-full w-full overflow-hidden">
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          systemStatus={systemStatus}
+          themeMode={themeMode}
+          queueCount={queue.length}
+        />
+
+        <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden relative">
+          <TitleBar
+            title={activeTab === 'converter' ? 'Конвертер и компрессор' : 'Загрузчик медиа из сети'}
+            themeMode={themeMode}
+          />
+
+          {/* Main scrollable body with visible styled scrollbar */}
+          <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col">
+            {/* Tab 1: Local Converter & Compressor */}
+            <div className={`flex-1 flex flex-col ${activeTab === 'converter' ? 'flex' : 'hidden'} ${
+              isQueueEmpty ? 'min-h-full items-center justify-center' : 'gap-5'
+            }`}>
+              <DropZone
+                onFilesSelected={handleFilesSelected}
+                queueCount={queue.length}
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                themeMode={themeMode}
+              />
+
+              {queue.length > 0 && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+                  <div className="flex items-center gap-2">
+                    <h3 className={`font-bold text-sm tracking-wide uppercase flex items-center gap-2 ${
+                      themeMode === 'light' ? 'text-slate-800' : 'text-white'
+                    }`}>
+                      <span>Список файлов ({queue.length})</span>
+                    </h3>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                      <Wand2 className="w-3.5 h-3.5 text-accent" /> Применить ко всем:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyGlobalPreset('balanced')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+                        globalPreset === 'balanced'
+                          ? 'bg-accent-subtle text-accent border border-accent glow-accent'
+                          : themeMode === 'light'
+                            ? 'bg-slate-200/70 text-slate-700 hover:text-slate-900 border border-slate-300/60'
+                            : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
+                      }`}
+                    >
+                      Оптимально
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyGlobalPreset('ultra-compress')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+                        globalPreset === 'ultra-compress'
+                          ? 'bg-accent-subtle text-accent border border-accent glow-accent'
+                          : themeMode === 'light'
+                            ? 'bg-slate-200/70 text-slate-700 hover:text-slate-900 border border-slate-300/60'
+                            : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
+                      }`}
+                    >
+                      Макс. сжатие
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyGlobalPreset('discord-8mb')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+                        globalPreset === 'discord-8mb'
+                          ? 'bg-accent-subtle text-accent border border-accent glow-accent'
+                          : themeMode === 'light'
+                            ? 'bg-slate-200/70 text-slate-700 hover:text-slate-900 border border-slate-300/60'
+                            : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
+                      }`}
+                    >
+                      Discord 8МБ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyGlobalPreset('high-quality')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+                        globalPreset === 'high-quality'
+                          ? 'bg-accent-subtle text-accent border border-accent glow-accent'
+                          : themeMode === 'light'
+                            ? 'bg-slate-200/70 text-slate-700 hover:text-slate-900 border border-slate-300/60'
+                            : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
+                      }`}
+                    >
+                      HQ Качество
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleClearAll}
+                      className="p-1.5 ml-2 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
+                      title="Очистить весь список"
+                    >
+                      <Trash className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {queue.length > 0 && (
+                <div className="flex-1 flex flex-col gap-3 pb-32">
+                  {queue.map((item) => (
+                    <QueueItem
+                      key={item.id}
+                      item={item}
+                      onUpdateFormat={handleUpdateFormat}
+                      onUpdatePreset={handleUpdatePreset}
+                      onOpenInspector={setInspectingItem}
+                      onStartSingle={startConversion}
+                      onCancel={handleCancel}
+                      onRemove={handleRemove}
+                      onReveal={handleReveal}
+                      onPreview={setPreviewItem}
+                      onOpenTrimmer={setTrimmingItem}
+                      themeMode={themeMode}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Tab 2: Web Media Downloader (Kept mounted via CSS display) */}
+            <div className={`flex-1 flex flex-col ${activeTab === 'downloader' ? 'flex' : 'hidden'}`}>
+              <WebDownloader
+                outputDir={settings.separateByType && settings.audioDir ? settings.audioDir : (settings.defaultDir || outputDir)}
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                themeMode={themeMode}
+                onOpenTrimmer={setTrimmingItem}
+                onPreview={setPreviewItem}
+                onSendToQueue={(downloadedPath) => {
+                  handleFilesSelected([downloadedPath]);
+                  setActiveTab('converter');
+                }}
+              />
+            </div>
+          </main>
+
+          {/* Sticky Bottom Batch Toolbar for Converter (contained within right column) */}
+          {activeTab === 'converter' && queue.length > 0 && (
+            <BatchBar
+              queue={queue}
+              onConvertAll={handleConvertAll}
+              onClearCompleted={handleClearCompleted}
+              isProcessingBatch={isProcessingBatch}
+              themeMode={themeMode}
+            />
+          )}
+        </div>
+      </div>
 
       {/* Settings Modal (Configurable render destinations per file type) */}
       {isSettingsOpen && (
@@ -458,6 +553,16 @@ export default function App() {
           onSave={handleSaveSettings}
           onClose={() => setIsSettingsOpen(false)}
           systemStatus={systemStatus}
+          theme={theme}
+          setTheme={setTheme}
+          themeMode={themeMode}
+          setThemeMode={setThemeMode}
+          bgImage={bgImage}
+          setBgImage={setBgImage}
+          bgDarkness={bgDarkness}
+          setBgDarkness={setBgDarkness}
+          bgBlur={bgBlur}
+          setBgBlur={setBgBlur}
         />
       )}
 
@@ -468,6 +573,7 @@ export default function App() {
           systemStatus={systemStatus}
           onClose={() => setInspectingItem(null)}
           onSave={handleSaveItemSettings}
+          themeMode={themeMode}
         />
       )}
 
@@ -477,16 +583,20 @@ export default function App() {
           item={previewItem}
           onClose={() => setPreviewItem(null)}
           onReveal={handleReveal}
+          onOpenTrimmer={setTrimmingItem}
+          themeMode={themeMode}
         />
       )}
 
-      {/* Sticky Bottom Batch Toolbar for Converter */}
-      {activeTab === 'converter' && queue.length > 0 && (
-        <BatchBar
-          queue={queue}
-          onConvertAll={handleConvertAll}
-          onClearCompleted={handleClearCompleted}
-          isProcessingBatch={isProcessingBatch}
+      {/* Media Trimmer / Lossless Cutter Modal */}
+      {trimmingItem && (
+        <TrimmerModal
+          item={trimmingItem}
+          onClose={() => setTrimmingItem(null)}
+          onSaveTrim={handleSaveTrim}
+          onReveal={handleReveal}
+          themeMode={themeMode}
+          outputDir={settings.separateByType && trimmingItem.mediaType === 'audio' && settings.audioDir ? settings.audioDir : (settings.defaultDir || outputDir)}
         />
       )}
     </div>

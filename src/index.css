@@ -85,6 +85,93 @@
     --border-color: rgba(255, 255, 255, 0.15);
   }
 
+  [data-theme-mode="light"] {
+    --bg-main: #f1f4f9 !important;
+    --bg-card: rgba(255, 255, 255, 0.95) !important;
+    --border-color: rgba(0, 0, 0, 0.12) !important;
+  }
+
+  [data-theme-mode="light"] body,
+  [data-theme-mode="light"] #root {
+    background-color: #f1f4f9 !important;
+    color: #0f172a !important;
+  }
+
+  [data-theme-mode="light"] header {
+    background-color: rgba(255, 255, 255, 0.92) !important;
+    border-bottom-color: rgba(0, 0, 0, 0.08) !important;
+  }
+
+  [data-theme-mode="light"] .text-white {
+    color: #0f172a !important;
+  }
+
+  [data-theme-mode="light"] .text-slate-200 {
+    color: #1e293b !important;
+  }
+
+  [data-theme-mode="light"] .text-slate-400,
+  [data-theme-mode="light"] .text-slate-300 {
+    color: #475569 !important;
+  }
+
+  [data-theme-mode="light"] .text-slate-500 {
+    color: #64748b !important;
+  }
+
+  [data-theme-mode="light"] .bg-slate-900\/50,
+  [data-theme-mode="light"] .bg-slate-900\/60,
+  [data-theme-mode="light"] .bg-slate-900\/70,
+  [data-theme-mode="light"] .bg-slate-900\/80,
+  [data-theme-mode="light"] .bg-black\/40,
+  [data-theme-mode="light"] .bg-black\/50,
+  [data-theme-mode="light"] .bg-black\/60,
+  [data-theme-mode="light"] .bg-black\/70,
+  [data-theme-mode="light"] .bg-white\/5 {
+    background-color: rgba(255, 255, 255, 0.88) !important;
+    border-color: rgba(0, 0, 0, 0.1) !important;
+    color: #0f172a !important;
+  }
+
+  [data-theme-mode="light"] input[type="text"] {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border-color: rgba(0, 0, 0, 0.15) !important;
+  }
+
+  [data-theme-mode="light"] select {
+    color-scheme: light !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border-color: rgba(0, 0, 0, 0.15) !important;
+  }
+
+  [data-theme-mode="light"] option,
+  [data-theme-mode="light"] select option {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  [data-theme-mode="light"] .bg-slate-900 {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  select {
+    color-scheme: dark;
+  }
+
+  option {
+    background-color: #0f172a;
+    color: #f8fafc;
+  }
+
+  [data-theme-mode="light"] .bg-\[\#0b0e17\] {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border-color: rgba(0, 0, 0, 0.12) !important;
+  }
+
   html, body, #root {
     height: 100%;
     margin: 0;

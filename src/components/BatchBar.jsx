@@ -7,22 +7,26 @@ export default function BatchBar({
   onConvertAll,
   onClearCompleted,
   isProcessingBatch,
+  themeMode,
 }) {
+  const isLight = themeMode === 'light';
   const pendingItems = queue.filter((i) => i.status === 'idle');
   const completedItems = queue.filter((i) => i.status === 'completed');
 
   const totalOriginalBytes = queue.reduce((sum, item) => sum + (item.size || 0), 0);
 
   return (
-    <div className="sticky bottom-0 left-0 right-0 p-4 border-t border-white/5 bg-[#080b13]/95 backdrop-blur-md z-40">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+    <div className={`sticky bottom-0 left-0 right-0 p-4 border-t z-40 transition-colors duration-200 backdrop-blur-md ${
+      isLight ? 'bg-white/95 border-slate-200 text-slate-900 shadow-lg' : 'bg-[#080b13]/95 border-white/5 text-slate-100'
+    }`}>
+      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 px-2">
         {/* Left: Summary Stats (Clean without render path, which is in Settings) */}
         <div className="flex items-center gap-3">
           <div className="flex flex-col">
-            <span className="text-xs font-semibold text-white">
+            <span className={`text-xs font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>
               В очереди: <strong className="text-accent">{pendingItems.length}</strong> из {queue.length} файлов
             </span>
-            <span className="text-[11px] font-mono text-slate-400">
+            <span className={`text-[11px] font-mono ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
               Общий объём: {formatBytes(totalOriginalBytes)}
             </span>
           </div>

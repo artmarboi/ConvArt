@@ -1,7 +1,9 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { Readable } = require('stream');
+const { pathToFileURL } = require('url');
 const { spawn, execSync, exec } = require('child_process');
 let autoUpdater = null;
 try {
@@ -190,6 +192,22 @@ ipcMain.on('window-maximize', () => {
   }
 });
 ipcMain.on('window-close', () => { if (mainWindow) mainWindow.close(); });
+ipcMain.on('set-window-theme', (_event, theme) => {
+  if (mainWindow) {
+    const icoName = theme === 'light' ? 'ConvArt_White.ico' : 'ConvArt.ico';
+    const candidates = [
+      path.join(__dirname, '..', 'src', 'assets', icoName),
+      path.join(__dirname, '..', icoName),
+      path.join(path.dirname(process.execPath || ''), icoName),
+    ];
+    const targetIco = candidates.find(p => fs.existsSync(p));
+    if (targetIco) {
+      try {
+        mainWindow.setIcon(targetIco);
+      } catch {}
+    }
+  }
+});
 
 // Status
 ipcMain.handle('get-system-status', async () => {
@@ -297,6 +315,28 @@ ipcMain.handle('reveal-file', async (_event, filePath) => {
     shell.showItemInFolder(filePath);
   } else if (fs.existsSync(path.dirname(filePath))) {
     shell.openPath(path.dirname(filePath));
+  }
+});
+
+// Read local image directly as data: URL for background & preview without CORS or protocol bugs
+ipcMain.handle('read-image-data-url', async (_event, filePath) => {
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  try {
+    const ext = path.extname(filePath).toLowerCase();
+    let mimeType = 'image/jpeg';
+    if (ext === '.png') mimeType = 'image/png';
+    else if (ext === '.webp') mimeType = 'image/webp';
+    else if (ext === '.gif') mimeType = 'image/gif';
+    else if (ext === '.svg') mimeType = 'image/svg+xml';
+    else if (ext === '.bmp') mimeType = 'image/bmp';
+    else if (ext === '.avif') mimeType = 'image/avif';
+
+    const buffer = await fs.promises.readFile(filePath);
+    const base64 = buffer.toString('base64');
+    return `data:${mimeType};base64,${base64}`;
+  } catch (err) {
+    console.error('Error reading image as data URL:', err);
+    return null;
   }
 });
 
@@ -512,7 +552,17 @@ ipcMain.handle('start-conversion', async (_event, payload) => {
   }
 
   const hw = detectHardwareSupport();
-  const ffmpegArgs = ['-y', '-i', inputPath];
+  const ffmpegArgs = ['-y'];
+
+  // Fast seek and trim support
+  if (settings.trimStart && Number(settings.trimStart) > 0) {
+    ffmpegArgs.push('-ss', Number(settings.trimStart).toString());
+  }
+  if (settings.trimEnd && Number(settings.trimEnd) > 0) {
+    ffmpegArgs.push('-to', Number(settings.trimEnd).toString());
+  }
+
+  ffmpegArgs.push('-i', inputPath);
 
   if (mediaType === 'video') {
     applyVideoSettings(ffmpegArgs, targetFormat, preset, settings, hw, totalDuration, originalSize);
@@ -629,6 +679,131 @@ ipcMain.handle('cancel-conversion', async (_event, jobId) => {
     job.status = 'cancelled';
   }
   return { success: true };
+});
+
+// Lossless Media Cutter (Stream Copy - 0.5s execution without re-encoding)
+ipcMain.handle('lossless-cut', async (_event, payload) => {
+  const { inputPath, outputFolder = downloadsDir, startTime = 0, endTime = 0 } = payload;
+  if (!inputPath || !fs.existsSync(inputPath)) {
+    throw new Error('Файл не найден: ' + inputPath);
+  }
+  if (!fs.existsSync(outputFolder)) {
+    fs.mkdirSync(outputFolder, { recursive: true });
+  }
+
+  const ext = path.extname(inputPath);
+  const base = path.basename(inputPath, ext);
+  const sStart = Math.round(startTime);
+  const sEnd = Math.round(endTime);
+  const outName = `${base}_cut_${sStart}s_${sEnd}s${ext}`;
+  let outputPath = path.join(outputFolder, outName);
+  let counter = 1;
+  while (fs.existsSync(outputPath)) {
+    outputPath = path.join(outputFolder, `${base}_cut_${sStart}s_${sEnd}s_${counter}${ext}`);
+    counter++;
+  }
+
+  const args = ['-y'];
+  if (startTime > 0) {
+    args.push('-ss', startTime.toString());
+  }
+  if (endTime > 0 && endTime > startTime) {
+    args.push('-to', endTime.toString());
+  }
+  args.push('-i', inputPath, '-c', 'copy', outputPath);
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn(FFMPEG_BIN, args);
+    proc.on('close', (code) => {
+      if (code === 0 && fs.existsSync(outputPath)) {
+        resolve({ success: true, outputPath, fileName: path.basename(outputPath) });
+      } else {
+        reject(new Error(`FFmpeg Lossless Cut завершился с кодом ошибки: ${code}`));
+      }
+    });
+    proc.on('error', (err) => reject(err));
+  });
+});
+
+// Extract single frame as base64 JPEG for universal instant codec preview
+ipcMain.handle('extract-frame', async (_event, payload) => {
+  const { filePath, time = 0, width = 720 } = payload || {};
+  if (!filePath || !fs.existsSync(filePath)) {
+    return null;
+  }
+
+  const targetTime = Math.max(0, parseFloat(time) || 0);
+
+  return new Promise((resolve) => {
+    const args = [
+      '-ss', targetTime.toFixed(3),
+      '-i', filePath,
+      '-frames:v', '1',
+      '-vf', `scale=${width}:-2`,
+      '-q:v', '3',
+      '-f', 'image2',
+      '-c:v', 'mjpeg',
+      'pipe:1',
+    ];
+
+    const child = spawn(FFMPEG_BIN, args);
+    const chunks = [];
+    child.stdout.on('data', (c) => chunks.push(c));
+    child.on('close', (code) => {
+      if (code === 0 && chunks.length > 0) {
+        const buf = Buffer.concat(chunks);
+        resolve(`data:image/jpeg;base64,${buf.toString('base64')}`);
+      } else {
+        resolve(null);
+      }
+    });
+    child.on('error', () => resolve(null));
+  });
+});
+
+// Generate fast lightweight H.264 proxy for smooth HTML5 playback of unsupported codecs
+ipcMain.handle('generate-fast-preview', async (_event, filePath) => {
+  if (!filePath || !fs.existsSync(filePath)) {
+    throw new Error('Файл не найден');
+  }
+
+  const tempDir = path.join(os.tmpdir(), 'ConvArtPreview');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+
+  const hash = Math.abs(filePath.split('').reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0));
+  const proxyPath = path.join(tempDir, `preview_${hash}.mp4`);
+
+  if (fs.existsSync(proxyPath)) {
+    return { success: true, proxyPath };
+  }
+
+  return new Promise((resolve, reject) => {
+    const args = [
+      '-y',
+      '-i', filePath,
+      '-t', '180',
+      '-vf', 'scale=-2:720',
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-crf', '26',
+      '-c:a', 'aac',
+      '-b:a', '128k',
+      '-movflags', '+faststart',
+      proxyPath,
+    ];
+
+    const child = spawn(FFMPEG_BIN, args);
+    child.on('close', (code) => {
+      if (code === 0 && fs.existsSync(proxyPath)) {
+        resolve({ success: true, proxyPath });
+      } else {
+        reject(new Error(`Не удалось создать превью (код: ${code})`));
+      }
+    });
+    child.on('error', (err) => reject(err));
+  });
 });
 
 // Enhanced video settings with guaranteed compression ceilings
@@ -982,92 +1157,106 @@ ipcMain.handle('cancel-web-download', async (_event, downloadId) => {
 app.whenReady().then(() => {
   protocol.handle('media-loader', async (request) => {
     try {
-      let fileUrl = request.url.replace(/^media-loader:\/\//i, '');
-      fileUrl = decodeURI(fileUrl);
-      if (/^\/[a-zA-Z]:/.test(fileUrl)) fileUrl = fileUrl.substring(1);
-      fileUrl = fileUrl.replace(/\//g, '\\');
-
-      if (!fs.existsSync(fileUrl)) {
-        return new Response('File not found', { status: 404 });
+      let filePath = '';
+      try {
+        const u = new URL(request.url);
+        if (u.searchParams && u.searchParams.has('path')) {
+          filePath = u.searchParams.get('path');
+        } else {
+          let raw = request.url.replace(/^media-loader:\/\/[^/]*\/?/i, '');
+          filePath = decodeURIComponent(raw);
+          if (/^[a-zA-Z]\//.test(filePath)) {
+            filePath = filePath.charAt(0) + ':' + filePath.substring(1);
+          }
+          if (/^\/[a-zA-Z]:/.test(filePath)) filePath = filePath.substring(1);
+        }
+      } catch (e) {
+        let raw = request.url.replace(/^media-loader:\/\/[^/]*\/?/i, '');
+        filePath = decodeURIComponent(raw);
       }
 
-      const stat = fs.statSync(fileUrl);
-      const range = request.headers.get('range');
-      const ext = path.extname(fileUrl).toLowerCase();
+      filePath = path.normalize(filePath);
 
-      const mimeTypes = {
-        '.mp4': 'video/mp4',
-        '.webm': 'video/webm',
-        '.mkv': 'video/x-matroska',
-        '.mov': 'video/quicktime',
-        '.avi': 'video/x-msvideo',
-        '.mp3': 'audio/mpeg',
-        '.wav': 'audio/wav',
-        '.flac': 'audio/flac',
-        '.ogg': 'audio/ogg',
-        '.opus': 'audio/opus',
-        '.m4a': 'audio/mp4',
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.png': 'image/png',
-        '.webp': 'image/webp',
-        '.gif': 'image/gif',
-        '.avif': 'image/avif',
-      };
-      const contentType = mimeTypes[ext] || 'application/octet-stream';
-
-      if (range) {
-        const parts = range.replace(/bytes=/, '').split('-');
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
-        const chunksize = end - start + 1;
-        const fileStream = fs.createReadStream(fileUrl, { start, end });
-
-        const webStream = new ReadableStream({
-          start(controller) {
-            fileStream.on('data', (chunk) => controller.enqueue(chunk));
-            fileStream.on('end', () => controller.close());
-            fileStream.on('error', (err) => controller.error(err));
-          },
-          cancel() {
-            fileStream.destroy();
-          },
-        });
-
-        return new Response(webStream, {
-          status: 206,
-          headers: {
-            'Content-Range': `bytes ${start}-${end}/${stat.size}`,
-            'Accept-Ranges': 'bytes',
-            'Content-Length': chunksize.toString(),
-            'Content-Type': contentType,
-          },
-        });
+      if (!fs.existsSync(filePath)) {
+        console.error('[media-loader] File not found:', filePath);
+        return new Response('File not found: ' + filePath, { status: 404 });
       }
 
-      const fileStream = fs.createReadStream(fileUrl);
-      const webStream = new ReadableStream({
-        start(controller) {
-          fileStream.on('data', (chunk) => controller.enqueue(chunk));
-          fileStream.on('end', () => controller.close());
-          fileStream.on('error', (err) => controller.error(err));
-        },
-        cancel() {
-          fileStream.destroy();
-        },
-      });
+      const stat = fs.statSync(filePath);
+      const fileSize = stat.size;
 
+      // Determine mime type
+      const ext = path.extname(filePath).toLowerCase();
+      let mimeType = 'video/mp4';
+      if (ext === '.webm') mimeType = 'video/webm';
+      else if (ext === '.mkv') mimeType = 'video/x-matroska';
+      else if (ext === '.mov') mimeType = 'video/quicktime';
+      else if (ext === '.avi') mimeType = 'video/x-msvideo';
+      else if (ext === '.mp3') mimeType = 'audio/mpeg';
+      else if (ext === '.wav') mimeType = 'audio/wav';
+      else if (ext === '.ogg') mimeType = 'audio/ogg';
+      else if (ext === '.flac') mimeType = 'audio/flac';
+      else if (ext === '.m4a') mimeType = 'audio/mp4';
+      else if (ext === '.aac') mimeType = 'audio/aac';
+      else if (ext === '.png') mimeType = 'image/png';
+      else if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
+      else if (ext === '.webp') mimeType = 'image/webp';
+      else if (ext === '.gif') mimeType = 'image/gif';
+
+      const rangeHeader = request.headers.get('range');
+      if (rangeHeader) {
+        const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
+        if (match) {
+          let start = match[1] ? parseInt(match[1], 10) : 0;
+          let end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+
+          if (isNaN(start)) start = 0;
+          if (isNaN(end) || end >= fileSize) end = fileSize - 1;
+
+          if (start > end || start >= fileSize) {
+            return new Response(null, {
+              status: 416,
+              statusText: 'Range Not Satisfiable',
+              headers: {
+                'Content-Range': `bytes */${fileSize}`,
+                'Accept-Ranges': 'bytes',
+              },
+            });
+          }
+
+          const chunkSize = end - start + 1;
+          const nodeStream = fs.createReadStream(filePath, { start, end });
+          const webStream = Readable.toWeb(nodeStream);
+
+          return new Response(webStream, {
+            status: 206,
+            statusText: 'Partial Content',
+            headers: {
+              'Content-Type': mimeType,
+              'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+              'Accept-Ranges': 'bytes',
+              'Content-Length': String(chunkSize),
+              'Access-Control-Allow-Origin': '*',
+            },
+          });
+        }
+      }
+
+      // No range header: return full file stream with Accept-Ranges
+      const nodeStream = fs.createReadStream(filePath);
+      const webStream = Readable.toWeb(nodeStream);
       return new Response(webStream, {
         status: 200,
         headers: {
+          'Content-Type': mimeType,
           'Accept-Ranges': 'bytes',
-          'Content-Length': stat.size.toString(),
-          'Content-Type': contentType,
+          'Content-Length': String(fileSize),
+          'Access-Control-Allow-Origin': '*',
         },
       });
     } catch (err) {
-      console.error('media-loader error:', err);
-      return new Response(err.message, { status: 500 });
+      console.error('[media-loader] Protocol error:', err);
+      return new Response('Error loading media: ' + err.message, { status: 500 });
     }
   });
 

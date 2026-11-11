@@ -1,6 +1,6 @@
 {
   "name": "convart",
-  "version": "1.0.0",
+  "version": "1.0.7",
   "description": "ConvArt - High-speed Media Compressor & Converter by artmarboi",
   "main": "electron/main.cjs",
   "author": "artmarboi",

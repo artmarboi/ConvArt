@@ -2,14 +2,20 @@ import React, { useState, useEffect } from 'react';
 import {
   Download, Globe, Film, Music, CheckCircle2,
   AlertCircle, RefreshCw, FolderOpen, ArrowRight, Trash, Plus,
-  X
+  X, Scissors, Eye
 } from 'lucide-react';
 import { formatDuration } from '../constants/presets';
 
 export default function WebDownloader({
   outputDir,
   onSendToQueue,
+  activeTab,
+  setActiveTab,
+  themeMode,
+  onOpenTrimmer,
+  onPreview,
 }) {
+  const isLight = themeMode === 'light';
   const [urlInput, setUrlInput] = useState('');
   const [isFetchingInfo, setIsFetchingInfo] = useState(false);
   const [fetchError, setFetchError] = useState(null);
@@ -201,14 +207,18 @@ export default function WebDownloader({
 
   return (
     <div className={`w-full flex-1 flex flex-col ${
-      !hasItems ? 'min-h-[calc(100vh-6rem)] items-center justify-center' : 'gap-5'
+      !hasItems ? 'min-h-full items-center justify-center' : 'gap-5'
     } animate-in fade-in duration-300`}>
-      {/* Hero Input Box (Exact same dimensions, radius, padding, style as Converter DropZone) */}
-      <div className="relative w-full max-w-[680px] min-h-[390px] h-[390px] mx-auto rounded-3xl p-8 sm:p-9 bg-slate-900/50 backdrop-blur-2xl border border-white/10 glow-accent text-center flex flex-col items-center justify-between overflow-hidden transition-all duration-300 shadow-2xl">
+      {/* Hero Input Box */}
+      <div className={`relative w-full max-w-[680px] min-h-[410px] h-[410px] mx-auto rounded-3xl p-8 sm:p-9 backdrop-blur-2xl border glow-accent text-center flex flex-col items-center justify-between overflow-hidden transition-all duration-300 shadow-2xl ${
+        isLight
+          ? 'bg-white/80 border-slate-200/80 shadow-slate-200/50'
+          : 'bg-slate-900/60 border-white/10'
+      }`}>
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--accent-glow)_0%,_transparent_65%)] opacity-15 pointer-events-none" />
 
         {/* Top: Central icon cluster */}
-        <div className="relative flex items-center justify-center">
+        <div className="relative flex items-center justify-center mt-3">
           <div className="w-14 h-14 rounded-2xl bg-accent-subtle border border-accent flex items-center justify-center glow-accent shadow-xl">
             <Globe className="w-7 h-7 text-accent" />
           </div>
@@ -216,10 +226,14 @@ export default function WebDownloader({
 
         {/* Middle: Heading & Description */}
         <div className="flex flex-col items-center">
-          <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight mb-2">
+          <h2 className={`text-xl sm:text-2xl font-black tracking-tight mb-2 ${
+            isLight ? 'text-slate-900' : 'text-white'
+          }`}>
             Загрузчик медиа из любых источников
           </h2>
-          <p className="text-xs sm:text-sm text-slate-400 max-w-lg leading-relaxed">
+          <p className={`text-xs sm:text-sm max-w-lg leading-relaxed ${
+            isLight ? 'text-slate-600' : 'text-slate-400'
+          }`}>
             Вставьте ссылку на <strong>YouTube, SoundCloud, TikTok, VK, Spotify</strong> — видео в 4K/1080p или аудио с метаданными и обложкой.
           </p>
         </div>
@@ -234,12 +248,20 @@ export default function WebDownloader({
                 value={urlInput}
                 onChange={(e) => setUrlInput(e.target.value)}
                 disabled={isFetchingInfo}
-                className="w-full pl-4 pr-24 py-2.5 rounded-xl bg-black/60 border border-white/15 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-accent glow-accent transition"
+                className={`w-full pl-4 pr-24 py-2.5 rounded-xl border text-sm focus:outline-none focus:border-accent glow-accent transition ${
+                  isLight
+                    ? 'bg-slate-100/90 border-slate-300 text-slate-900 placeholder-slate-400'
+                    : 'bg-black/60 border-white/15 text-white placeholder-slate-500'
+                }`}
               />
               <button
                 type="button"
                 onClick={handlePaste}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg text-xs font-mono bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white border border-white/10 transition cursor-pointer"
+                className={`absolute right-2.5 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg text-xs font-mono transition cursor-pointer border ${
+                  isLight
+                    ? 'bg-white text-slate-700 hover:bg-slate-200 border-slate-300'
+                    : 'bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white border-white/10'
+                }`}
               >
                 Вставить
               </button>
@@ -282,15 +304,15 @@ export default function WebDownloader({
             </div>
           )}
 
-          <div className="flex flex-wrap items-center justify-center gap-1.5 text-[11px] font-mono text-slate-500">
-            <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/5">YouTube 4K</span>
-            <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/5">SoundCloud</span>
-            <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/5">TikTok</span>
-            <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/5">VK Видео</span>
-            <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/5">Spotify</span>
-            <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/5">MP3 320k</span>
-            <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/5">FLAC</span>
-            <span className="text-slate-600">+ ещё 100+ сайтов</span>
+          <div className="flex flex-wrap items-center justify-center gap-1.5 text-[11px] font-mono">
+            <span className={`px-1.5 py-0.5 rounded border ${isLight ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-white/5 border-white/5 text-slate-400'}`}>YouTube 4K</span>
+            <span className={`px-1.5 py-0.5 rounded border ${isLight ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-white/5 border-white/5 text-slate-400'}`}>SoundCloud</span>
+            <span className={`px-1.5 py-0.5 rounded border ${isLight ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-white/5 border-white/5 text-slate-400'}`}>TikTok</span>
+            <span className={`px-1.5 py-0.5 rounded border ${isLight ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-white/5 border-white/5 text-slate-400'}`}>VK Видео</span>
+            <span className={`px-1.5 py-0.5 rounded border ${isLight ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-white/5 border-white/5 text-slate-400'}`}>Spotify</span>
+            <span className={`px-1.5 py-0.5 rounded border ${isLight ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-white/5 border-white/5 text-slate-400'}`}>MP3 320k</span>
+            <span className={`px-1.5 py-0.5 rounded border ${isLight ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-white/5 border-white/5 text-slate-400'}`}>FLAC</span>
+            <span className={isLight ? 'text-slate-400' : 'text-slate-600'}>+ ещё 100+ сайтов</span>
           </div>
         </div>
       </div>
@@ -430,10 +452,12 @@ export default function WebDownloader({
                           <select
                             value={item.mode}
                             onChange={(e) => handleUpdateMode(item.id, e.target.value)}
-                            className="px-2.5 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-white focus:outline-none focus:border-accent cursor-pointer hover:bg-white/10 transition"
+                            className={`px-2.5 py-1.5 rounded-xl border text-xs font-semibold focus:outline-none focus:border-accent cursor-pointer transition ${
+                              isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-white/5 border-white/10 text-white'
+                            }`}
                           >
-                            <option value="video" className="bg-slate-900 text-white">Видео (MP4)</option>
-                            <option value="audio" className="bg-slate-900 text-white">Аудио (MP3 / FLAC)</option>
+                            <option value="video">Видео (MP4)</option>
+                            <option value="audio">Аудио (MP3 / FLAC)</option>
                           </select>
                         ) : (
                           <span className="px-2.5 py-1 rounded-xl bg-accent-subtle border border-accent text-accent text-xs font-semibold">
@@ -441,7 +465,7 @@ export default function WebDownloader({
                           </span>
                         )}
 
-                        {/* Quality Select Dropdown (Changed from pill buttons to dropdown!) */}
+                        {/* Quality Select Dropdown */}
                         <select
                           value={item.selectedQuality?.id || ''}
                           onChange={(e) => {
@@ -449,10 +473,12 @@ export default function WebDownloader({
                             const found = list.find((q) => q.id === e.target.value);
                             if (found) handleUpdateQuality(item.id, found);
                           }}
-                          className="px-2.5 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-white focus:outline-none focus:border-accent cursor-pointer hover:bg-white/10 transition max-w-[200px] truncate"
+                          className={`px-2.5 py-1.5 rounded-xl border text-xs font-semibold focus:outline-none focus:border-accent cursor-pointer transition max-w-[200px] truncate ${
+                            isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-white/5 border-white/10 text-white'
+                          }`}
                         >
                           {(item.mode === 'video' ? item.videoQualities : item.audioQualities)?.map((q) => (
-                            <option key={q.id} value={q.id} className="bg-slate-900 text-white">
+                            <option key={q.id} value={q.id}>
                               {q.label}
                             </option>
                           ))}
@@ -504,8 +530,28 @@ export default function WebDownloader({
                           <>
                             <button
                               type="button"
+                              onClick={() => onOpenTrimmer && onOpenTrimmer({
+                                id: item.id,
+                                filePath: item.filePath,
+                                fileName: item.title,
+                                mediaType: item.mode === 'audio' ? 'audio' : 'video',
+                                duration: item.duration || 0,
+                                size: 0,
+                                settings: {},
+                              })}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-accent-subtle text-accent border border-accent hover:brightness-110 transition cursor-pointer"
+                              title="Обрезать видео / аудио (Таймлайн-триммер)"
+                            >
+                              <Scissors className="w-3.5 h-3.5" />
+                              <span>Обрезать</span>
+                            </button>
+
+                            <button
+                              type="button"
                               onClick={() => window.api.revealFile(item.filePath)}
-                              className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition cursor-pointer"
+                              className={`p-1.5 rounded-xl border transition cursor-pointer ${
+                                isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300' : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border-white/10'
+                              }`}
                               title="Показать в проводнике"
                             >
                               <FolderOpen className="w-3.5 h-3.5 text-accent" />

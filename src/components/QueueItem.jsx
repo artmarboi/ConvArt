@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Film, Image as ImageIcon, Music, Play, CheckCircle2,
-  AlertCircle, X, Sliders, FolderOpen, RefreshCw, Eye
+  AlertCircle, X, Sliders, FolderOpen, RefreshCw, Eye, Scissors
 } from 'lucide-react';
 import { FORMAT_OPTIONS, PRESETS, formatBytes, formatDuration } from '../constants/presets';
 
@@ -15,10 +15,21 @@ export default function QueueItem({
   onRemove,
   onReveal,
   onPreview,
+  onOpenTrimmer,
+  themeMode,
 }) {
+  const isLight = themeMode === 'light';
   const isVideo = item.mediaType === 'video';
   const isImage = item.mediaType === 'image';
   const isAudio = item.mediaType === 'audio';
+
+  const handleItemOpen = () => {
+    if ((isVideo || isAudio) && onOpenTrimmer) {
+      onOpenTrimmer(item);
+    } else if (onPreview) {
+      onPreview(item);
+    }
+  };
 
   const formats = FORMAT_OPTIONS[item.mediaType] || FORMAT_OPTIONS.video;
   const presetList = PRESETS[item.mediaType] || PRESETS.video;
@@ -28,6 +39,9 @@ export default function QueueItem({
     : null;
 
   const mediaUrl = window.api && window.api.toMediaUrl ? window.api.toMediaUrl(item.filePath) : '';
+  const [thumbSrc, setThumbSrc] = useState(mediaUrl);
+
+  const isTrimmed = item.settings?.trimEnd > 0 || item.settings?.trimStart > 0;
 
   return (
     <div
@@ -44,16 +58,24 @@ export default function QueueItem({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         {/* Left: Thumbnail Preview & Metadata */}
         <div className="flex items-start md:items-center gap-3.5 min-w-0">
-          {/* Interactive Preview Thumbnail */}
+          {/* Interactive Preview / Trim Thumbnail */}
           <div
-            onClick={() => onPreview(item)}
+            onClick={handleItemOpen}
             className="relative w-12 h-12 shrink-0 rounded-xl overflow-hidden border border-white/10 hover:border-accent bg-black/40 flex items-center justify-center cursor-pointer group/thumb shadow-md transition"
-            title="Нажмите для предпросмотра"
+            title={(isVideo || isAudio) ? 'Нажмите для обрезки и просмотра' : 'Нажмите для просмотра'}
           >
             {isImage ? (
               <img
-                src={mediaUrl}
+                src={thumbSrc}
                 alt={item.fileName}
+                onError={async () => {
+                  if (window.api && window.api.readImageAsDataUrl) {
+                    try {
+                      const dUrl = await window.api.readImageAsDataUrl(item.filePath);
+                      if (dUrl) setThumbSrc(dUrl);
+                    } catch {}
+                  }
+                }}
                 className="w-full h-full object-cover transition duration-300 group-hover/thumb:scale-110"
               />
             ) : isVideo ? (
@@ -66,9 +88,13 @@ export default function QueueItem({
               </div>
             )}
 
-            {/* Hover overlay with Eye icon */}
+            {/* Hover overlay */}
             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition duration-200">
-              <Eye className="w-5 h-5 text-white" />
+              {(isVideo || isAudio) ? (
+                <Scissors className="w-5 h-5 text-accent" />
+              ) : (
+                <Eye className="w-5 h-5 text-white" />
+              )}
             </div>
           </div>
 
@@ -76,7 +102,7 @@ export default function QueueItem({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h4
-                onClick={() => onPreview(item)}
+                onClick={handleItemOpen}
                 className="font-semibold text-sm text-white truncate max-w-xs md:max-w-md hover:text-accent cursor-pointer transition"
                 title={item.fileName}
               >
@@ -113,31 +139,54 @@ export default function QueueItem({
                 </>
               )}
             </div>
+
+            {/* Active Trim range badge if trimmed */}
+            {isTrimmed && (
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-semibold bg-accent-subtle text-accent border border-accent/40 shadow-sm">
+                  <Scissors className="w-3 h-3 text-accent" />
+                  <span>Обрезан: {formatDuration(item.settings?.trimStart || 0)} - {formatDuration(item.settings?.trimEnd || 0)}</span>
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Right: Controls & Presets */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           {item.status === 'idle' && (
             <>
-              {/* Preview Button */}
-              <button
-                type="button"
-                onClick={() => onPreview(item)}
-                title="Предпросмотр медиа"
-                className="p-2 rounded-xl bg-white/5 hover:bg-accent-subtle hover:text-accent border border-white/10 hover:border-accent text-slate-300 transition cursor-pointer"
-              >
-                <Eye className="w-3.5 h-3.5" />
-              </button>
+              {/* Trim Button for Video & Audio */}
+              {(isVideo || isAudio) && onOpenTrimmer && (
+                <button
+                  type="button"
+                  onClick={() => onOpenTrimmer(item)}
+                  title="Обрезать аудио или видео (Таймлайн-триммер)"
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer border ${
+                    isTrimmed
+                      ? 'bg-accent-subtle text-accent border-accent glow-accent'
+                      : isLight
+                        ? 'bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 border-slate-200'
+                        : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border-white/10'
+                  }`}
+                >
+                  <Scissors className="w-3.5 h-3.5 text-accent" />
+                  <span className="hidden sm:inline">Обрезать</span>
+                </button>
+              )}
 
               {/* Target Format */}
               <select
                 value={item.targetFormat}
                 onChange={(e) => onUpdateFormat(item.id, e.target.value)}
-                className="px-2.5 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-white focus:outline-none focus:border-accent cursor-pointer hover:bg-white/10 transition"
+                className={`px-2.5 py-1.5 rounded-xl border text-xs font-semibold focus:outline-none focus:border-accent cursor-pointer transition ${
+                  isLight
+                    ? 'bg-white border-slate-300 text-slate-900'
+                    : 'bg-white/5 border-white/10 text-white'
+                }`}
               >
                 {formats.map((f) => (
-                  <option key={f.value} value={f.value} className="bg-slate-900 text-white">
+                  <option key={f.value} value={f.value}>
                     {f.label}
                   </option>
                 ))}
@@ -147,10 +196,14 @@ export default function QueueItem({
               <select
                 value={item.preset}
                 onChange={(e) => onUpdatePreset(item.id, e.target.value)}
-                className="px-2.5 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-slate-200 focus:outline-none focus:border-accent cursor-pointer hover:bg-white/10 transition"
+                className={`px-2.5 py-1.5 rounded-xl border text-xs focus:outline-none focus:border-accent cursor-pointer transition ${
+                  isLight
+                    ? 'bg-white border-slate-300 text-slate-900'
+                    : 'bg-white/5 border-white/10 text-slate-200'
+                }`}
               >
                 {presetList.map((p) => (
-                  <option key={p.id} value={p.id} className="bg-slate-900 text-white">
+                  <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
                 ))}
@@ -161,7 +214,11 @@ export default function QueueItem({
                 type="button"
                 onClick={() => onOpenInspector(item)}
                 title="Настроить параметры кодека и битрейта"
-                className="p-2 rounded-xl bg-white/5 hover:bg-accent-subtle hover:text-accent border border-white/10 hover:border-accent text-slate-300 transition cursor-pointer"
+                className={`p-2 rounded-xl border transition cursor-pointer ${
+                  isLight
+                    ? 'bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 border-slate-200'
+                    : 'bg-white/5 hover:bg-accent-subtle hover:text-accent border-white/10 hover:border-accent text-slate-300'
+                }`}
               >
                 <Sliders className="w-3.5 h-3.5" />
               </button>
